@@ -181,3 +181,86 @@ c = ROOT.TCanvas()
 hist = Hits_Counter(0, 1)
 hist.Draw()
 c.SaveAs('station_0_layer_1.png')
+
+# Plot Hit rate
+
+import ROOT, csv, math
+import numpy as np
+
+def getData(sample, station, layer) : # ieta : 1 to 8 (1 to 16 in case of GE2/1)
+    # Load csv file
+    if sample == 'zmm' : data = open('zmm_ME0.csv', 'r')
+    elif sample == 'nu' : data = open('singleNu_ME0.csv', 'r')
+    else : print("wrong sample name")
+    rdr = csv.reader(data)
+    r_pos = []
+    trArea = []
+    mean = []
+    total = [] # instead sigma
+    for i, line in enumerate(rdr) :
+        if i == 0 : continue
+        elif int(line[0]) == station and int(line[2]) == layer :
+            r_pos.append(float(line[5]))
+            trArea.append(float(line[8]))
+            mean.append(float(line[11]))
+            total.append(float(line[13]))
+        else : continue
+    data.close()
+    return r_pos, trArea, mean, total
+
+def HitRate(sample, station, layer) :
+    SF = 2544./(3564. * 25e-9) # including fill factor 2544/3564
+    if sample == 'zmm' : nofev = 15348.
+    elif sample == 'nu' : nofev = 9000.
+    Hit_rate = []
+    error = []
+    dataset = getData(sample, station, layer)
+    for i in range(len(dataset[0])) :
+        Hit_rate.append(SF * dataset[2][i] / dataset[1][i])
+        error.append(SF * math.sqrt(dataset[3][i]) / (dataset[1][i] * nofev))
+    return Hit_rate, error
+
+def Plotting_ME0(sample) :
+    # average of 6 layers of station == 0
+    c = ROOT.TCanvas("c1", "Hit rate vs. R")
+    gr = ROOT.TGraphErrors()
+    dataset = getData(sample, 0, 1)
+    Hit_rate_avg = []
+    error_avg = []
+    # average of all layers and even/odd chamber
+    for i in range(len(dataset[0])) :
+        array_HitRate = np.array([HitRate(sample, 0, 1)[0][i], HitRate(sample, 0, 2)[0][i], HitRate(sample, 0, 3)[0][i], HitRate(sample, 0, 4)[0][i], HitRate(sample, 0, 5)[0][i], HitRate(sample, 0, 6)[0][i]])
+        array_error = np.array([HitRate(sample, 0, 1)[1][i], HitRate(sample, 0, 2)[1][i], HitRate(sample, 0, 3)[1][i], HitRate(sample, 0, 4)[1][i], HitRate(sample, 0, 5)[1][i], HitRate(sample, 0, 6)[1][i]])
+        Hit_rate_avg.append(np.mean(array_HitRate))
+        error_avg.append(np.mean(array_error))
+    print(Hit_rate_avg)
+    for i in range(len(Hit_rate_avg)) :
+        gr.SetPoint(i, dataset[0][i], Hit_rate_avg[i])
+        gr.SetPointError(i, 0, error_avg[i])
+    # Fitting
+    gr.Fit("expo")
+    f = gr.GetListOfFunctions().FindObject("expo")
+    f.SetLineColor(1)
+    f.SetLineWidth(1)
+    gr.SetMarkerSize(1.5)
+    gr.SetMarkerStyle(22)
+    gr.GetXaxis().SetTitle("R [cm]")
+    gr.GetYaxis().SetTitle("Hit Rate [Hz/cm^{2}]")
+    gr.SetMinimum(0)
+    gr.Draw("APZ")
+    txt = ROOT.TLatex()
+    txt.SetNDC()
+    txt.SetTextFont(42)
+    txt.SetTextSize(0.030)
+    txt.SetTextAlign(13)
+    txt.DrawLatex(.6, .75, "Hit rate of PU = 200 simulation")
+    c.Update()
+    leg = ROOT.TLegend(0.6, 0.55, 0.85, 0.7)
+    leg.SetTextSize(0.030)
+    leg.SetBorderSize(0)
+    leg.AddEntry(gr, "average of 6 layers", "lpe")
+    leg.Draw()
+    c.SaveAs("%s_ME0.pdf" %(sample))
+
+Plotting_ME0('zmm')
+Plotting_ME0('nu')
